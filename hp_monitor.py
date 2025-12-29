@@ -13,8 +13,7 @@ import sys
 import subprocess
 
 VERSION = "1.0.0"
-GITHUB_REPO = "adimik/reborn_meter"
-GITHUB_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/master/"
+UPDATE_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/master/"
 
 try:
     import pytesseract
@@ -692,25 +691,25 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
         self.root.mainloop()
     
     def check_for_updates(self):
-        """Zkontroluje verzi na GitHubu a stáhne aktualizaci pokud je dostupná"""
+        """Zkontroluje verzi a stav aplikace"""
         try:
             # Kontrola zda není aplikace zrušena
             try:
-                deprecated_response = requests.get(GITHUB_RAW_URL + "deprecated.txt", timeout=5)
+                deprecated_response = requests.get(UPDATE_URL + "deprecated.txt", timeout=5)
                 if deprecated_response.status_code == 200:
                     message = deprecated_response.text.strip()
                     self.root.withdraw()
                     messagebox.showerror(
                         "Aplikace ukončena",
-                        message if message else "Tato aplikace byla vývojářem ukončena a nelze ji nadále používat."
+                        message if message else "Tato aplikace byla ukončena a nelze ji nadále používat."
                     )
                     self.root.destroy()
                     sys.exit(0)
             except requests.exceptions.RequestException:
                 pass  # deprecated.txt neexistuje, pokračuj normálně
             
-            # Stáhnutí verze z GitHubu
-            response = requests.get(GITHUB_RAW_URL + "version.txt", timeout=5)
+            # Stáhnutí verze
+            response = requests.get(UPDATE_URL + "version.txt", timeout=5)
             if response.status_code == 200:
                 github_version = response.text.strip()
                 
@@ -727,7 +726,7 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
             print(f"Kontrola aktualizací selhala: {e}")
     
     def download_update(self):
-        """Stáhne nejnovější verzi z GitHubu"""
+        """Stáhne nejnovější verzi"""
         try:
             files_to_update = [
                 "hp_monitor.py",
@@ -739,7 +738,7 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
             script_dir = os.path.dirname(os.path.abspath(__file__))
             
             for filename in files_to_update:
-                url = GITHUB_RAW_URL + filename
+                url = UPDATE_URL + filename
                 response = requests.get(url, timeout=10)
                 
                 if response.status_code == 200:
