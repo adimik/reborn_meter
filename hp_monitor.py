@@ -11,6 +11,7 @@ from datetime import datetime
 import os
 import sys
 import subprocess
+import ctypes
 
 VERSION = "1.0.0"
 UPDATE_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/main/"
@@ -49,6 +50,9 @@ class HPMonitorOverlay:
         self.root.overrideredirect(True)
         self.root.attributes('-topmost', True)
         self.root.attributes('-alpha', 0.95)
+        
+        # Nastavit overlay aby nekradl focus od hry
+        self.set_no_activate()
         
         self.drag_data = {"x": 0, "y": 0, "dragging": False}
         
@@ -100,6 +104,21 @@ class HPMonitorOverlay:
         self.title_label.bind("<Button-1>", start_drag)
         self.title_label.bind("<B1-Motion>", do_drag)
         self.title_label.bind("<ButtonRelease-1>", stop_drag)
+    
+    def set_no_activate(self):
+        """Nastaví okno aby nekradlo focus od hry"""
+        self.root.update_idletasks()
+        
+        hwnd = ctypes.windll.user32.GetParent(self.root.winfo_id())
+        if not hwnd:
+            hwnd = self.root.winfo_id()
+        
+        GWL_EXSTYLE = -20
+        WS_EX_NOACTIVATE = 0x08000000
+        
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        style = style | WS_EX_NOACTIVATE
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
     
     def setup_ui(self):
         self.root.configure(bg='#0a0a0a')
