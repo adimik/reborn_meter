@@ -14,7 +14,8 @@ import subprocess
 import ctypes
 
 VERSION = "1.0.0"
-UPDATE_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/main/"
+UPDATE_URL = "https://api.github.com/repos/adimik/reborn_meter/releases/latest"
+DEPRECATED_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/main/deprecated.txt"
 
 try:
     import pytesseract
@@ -734,11 +735,11 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
         self.root.mainloop()
     
     def check_for_updates(self):
-        """Zkontroluje verzi a stav aplikace"""
+        """Zkontroluje verzi a stav aplikace (EXE verze - GitHub Releases)"""
         try:
             # Kontrola zda není aplikace zrušena
             try:
-                deprecated_response = requests.get(UPDATE_URL + "deprecated.txt", timeout=5)
+                deprecated_response = requests.get(DEPRECATED_URL, timeout=5)
                 if deprecated_response.status_code == 200:
                     message = deprecated_response.text.strip()
                     self.root.withdraw()
@@ -751,25 +752,57 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
             except requests.exceptions.RequestException:
                 pass  # deprecated.txt neexistuje, pokračuj normálně
             
-            # Stáhnutí verze
-            response = requests.get(UPDATE_URL + "version.txt", timeout=5)
+            # Kontrola nové verze z GitHub Releases
+            response = requests.get(UPDATE_URL, timeout=10)
             if response.status_code == 200:
-                github_version = response.text.strip()
+                release_data = response.json()
+                latest_version = release_data.get('tag_name', '').replace('v', '')
                 
-                if github_version != VERSION:
-                    # Novější verze dostupná
-                    result = messagebox.askyesno(
-                        "Nová verze dostupná",
-                        f"Aktuální verze: {VERSION}\nNová verze: {github_version}\n\nChceš stáhnout aktualizaci?"
-                    )
+                if latest_version and latest_version != VERSION:
+                    # Najít HPMonitor.exe asset
+                    download_url = None
+                    for asset in release_data.get('assets', []):
+                        if asset['name'] == 'HPMonitor.exe':
+                            download_url = asset['browser_download_url']
+                            break
                     
-                    if result:
-                        self.download_update()
+                    if download_url:
+                        result = messagebox.askyesno(
+                            "Nová verze dostupná",
+                            f"Aktuální verze: {VERSION}\nNová verze: {latest_version}\n\nChceš stáhnout aktualizaci?"
+                        )
+                        
+                        if result:
+                            self.download_exe_update(download_url)
         except Exception as e:
             print(f"Kontrola aktualizací selhala: {e}")
     
+    def download_exe_update(self, download_url):
+        """Stáhne nový EXE pomocí updateru"""
+        try:
+            # Zkontrolovat jestli existuje updater
+            if getattr(sys, 'frozen', False):
+                # Běží jako EXE
+                exe_path = sys.executable
+                updater_path = os.path.join(os.path.dirname(exe_path), 'updater.exe')
+                
+                if not os.path.exists(updater_path):
+                    messagebox.showerror("Chyba", "Updater nebyl nalezen!")
+                    return
+                
+                # Spustit updater a zavřít aplikaci
+                subprocess.Popen([updater_path, download_url, exe_path])
+                self.root.destroy()
+                sys.exit(0)
+            else:
+                # Běží jako Python script - použít starou metodu
+                self.download_update()
+                
+        except Exception as e:
+            messagebox.showerror("Chyba", f"Aktualizace selhala: {e}")
+    
     def download_update(self):
-        """Stáhne nejnovější verzi"""
+        """Fallback pro Python verzi"""
         try:
             files_to_update = [
                 "hp_monitor.py",
