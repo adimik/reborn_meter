@@ -13,7 +13,7 @@ import sys
 import subprocess
 import ctypes
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 UPDATE_URL = "https://api.github.com/repos/adimik/reborn_meter/releases/latest"
 DEPRECATED_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/main/deprecated.txt"
 
@@ -52,9 +52,6 @@ class HPMonitorOverlay:
         self.root.attributes('-topmost', True)
         self.root.attributes('-alpha', 0.95)
         
-        # Nastavit overlay aby nekradl focus od hry
-        self.set_no_activate()
-        
         self.drag_data = {"x": 0, "y": 0, "dragging": False}
         
         self.monitoring = False
@@ -82,6 +79,9 @@ class HPMonitorOverlay:
         self.load_config()
         self.setup_ui()
         self.setup_drag()
+        
+        # Nastavit overlay aby nekradl focus od hry - musí být až PO setup_ui
+        self.set_no_activate()
     
     def setup_drag(self):
         def start_drag(event):
@@ -123,6 +123,8 @@ class HPMonitorOverlay:
     
     def setup_ui(self):
         self.root.configure(bg='#0a0a0a')
+        self.root.geometry("400x550")
+        self.root.resizable(False, False)
         
         main_container = tk.Frame(self.root, bg='#1a1a1a', highlightthickness=0, highlightbackground='#333333')
         main_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
@@ -174,11 +176,22 @@ class HPMonitorOverlay:
                                 font=('Segoe UI', 9))
         webhook_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0,5))
         
-        self.webhook_entry = tk.Entry(self.full_frame, bg='#2d2d30', fg='#ffffff', 
+        self.webhook_entry = tk.Entry(self.full_frame, bg='#1e1e1e', fg='#888888', 
                                        font=('Segoe UI', 9), relief=tk.FLAT, 
-                                       insertbackground='#ffffff', bd=0)
-        self.webhook_entry.grid(row=1, column=0, columnspan=3, sticky='ew', ipady=8, pady=(0,10))
+                                       insertbackground='#888888', bd=0, state='readonly', 
+                                       readonlybackground='#1e1e1e')
+        self.webhook_entry.grid(row=1, column=0, columnspan=2, sticky='ew', ipady=5, pady=(0,10), padx=(0,2))
+        # Nastavit hodnotu před readonly
+        self.webhook_entry.config(state='normal')
         self.webhook_entry.insert(0, self.discord_webhook)
+        self.webhook_entry.config(state='readonly')
+        
+        webhook_paste_btn = tk.Label(self.full_frame, text="📋", bg='#2d2d30', fg='#888888',
+                                     font=('Segoe UI', 10), cursor='hand2', width=3)
+        webhook_paste_btn.grid(row=1, column=2, sticky=tk.E, pady=(0,10))
+        webhook_paste_btn.bind("<Button-1>", lambda e: self.paste_to_entry(self.webhook_entry))
+        webhook_paste_btn.bind("<Enter>", lambda e: webhook_paste_btn.config(bg='#3e3e42'))
+        webhook_paste_btn.bind("<Leave>", lambda e: webhook_paste_btn.config(bg='#2d2d30'))
         
         user_id_label = tk.Label(self.full_frame, text="Discord User ID (číselné ID, ne nick!)", 
                                 bg='#1a1a1a', fg='#888888', 
@@ -187,17 +200,28 @@ class HPMonitorOverlay:
         
         # Tlačítko nápovědy
         help_btn = tk.Label(self.full_frame, text="❓", bg='#2d2d30', fg='#888888',
-                           font=('Segoe UI', 10), cursor='hand2', padx=8, pady=2)
+                           font=('Segoe UI', 10), cursor='hand2', width=3)
         help_btn.grid(row=2, column=2, sticky=tk.E, pady=(0,5))
         help_btn.bind("<Button-1>", lambda e: self.show_user_id_help())
         help_btn.bind("<Enter>", lambda e: help_btn.config(bg='#3e3e42'))
         help_btn.bind("<Leave>", lambda e: help_btn.config(bg='#2d2d30'))
         
-        self.user_id_entry = tk.Entry(self.full_frame, bg='#2d2d30', fg='#ffffff', 
+        self.user_id_entry = tk.Entry(self.full_frame, bg='#1e1e1e', fg='#888888', 
                                        font=('Segoe UI', 9), relief=tk.FLAT, 
-                                       insertbackground='#ffffff', bd=0)
-        self.user_id_entry.grid(row=3, column=0, columnspan=3, sticky='ew', ipady=8, pady=(0,15))
+                                       insertbackground='#888888', bd=0, state='readonly', 
+                                       readonlybackground='#1e1e1e')
+        self.user_id_entry.grid(row=3, column=0, columnspan=2, sticky='ew', ipady=5, pady=(0,15), padx=(0,2))
+        # Nastavit hodnotu před readonly
+        self.user_id_entry.config(state='normal')
         self.user_id_entry.insert(0, self.discord_user_id)
+        self.user_id_entry.config(state='readonly')
+        
+        user_id_paste_btn = tk.Label(self.full_frame, text="📋", bg='#2d2d30', fg='#888888',
+                                     font=('Segoe UI', 10), cursor='hand2', width=3)
+        user_id_paste_btn.grid(row=3, column=2, sticky=tk.E, pady=(0,15))
+        user_id_paste_btn.bind("<Button-1>", lambda e: self.paste_to_entry(self.user_id_entry))
+        user_id_paste_btn.bind("<Enter>", lambda e: user_id_paste_btn.config(bg='#3e3e42'))
+        user_id_paste_btn.bind("<Leave>", lambda e: user_id_paste_btn.config(bg='#2d2d30'))
         
         buttons = [
             ("📍 Vybrat Oblast", self.start_area_selection, '#2d2d30', 0),
@@ -209,7 +233,7 @@ class HPMonitorOverlay:
             btn = tk.Label(self.full_frame, text=text, bg=color, fg='#ffffff',
                           font=('Segoe UI', 9, 'bold'), cursor='hand2', 
                           relief=tk.FLAT, padx=10, pady=10)
-            btn.grid(row=4, column=col, sticky='ew', padx=2)
+            btn.grid(row=4, column=col, sticky='ew', padx=5)
             btn.bind("<Button-1>", lambda e, cmd=command: cmd())
             btn.bind("<Enter>", lambda e, b=btn: b.config(bg='#3e3e42'))
             btn.bind("<Leave>", lambda e, b=btn, c=color: b.config(bg=c))
@@ -290,6 +314,21 @@ class HPMonitorOverlay:
             fallback_btn.bind("<Button-1>", self.on_compact_click)
             fallback_btn.bind("<B1-Motion>", self.drag_compact_window)
             fallback_btn.bind("<ButtonRelease-1>", self.on_compact_release)
+    
+    def paste_to_entry(self, entry_widget):
+        """Vloží obsah schránky do vstupního pole"""
+        try:
+            clipboard_text = self.root.clipboard_get()
+            # Dočasně povolit editaci
+            entry_widget.config(state='normal')
+            entry_widget.delete(0, tk.END)
+            entry_widget.insert(0, clipboard_text)
+            # Zase zakázat editaci
+            entry_widget.config(state='readonly')
+        except tk.TclError:
+            # Schránka je prázdná nebo obsahuje nepoužitelná data
+            entry_widget.config(state='readonly')
+            pass
     
     def show_user_id_help(self):
         """Zobrazí návod jak získat User ID"""
