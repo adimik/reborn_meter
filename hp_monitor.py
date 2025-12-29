@@ -9,6 +9,12 @@ import threading
 import time
 from datetime import datetime
 import os
+import sys
+import subprocess
+
+VERSION = "1.0.0"
+GITHUB_REPO = "adimik/reborn_meter"
+GITHUB_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/master/"
 
 try:
     import pytesseract
@@ -30,6 +36,9 @@ except Exception as e:
 
 class HPMonitorOverlay:
     def __init__(self):
+        # Kontrola aktualizací při startu
+        self.check_for_updates()
+        
         self.root = tk.Tk()
         self.root.title("System Monitor")
         
@@ -676,6 +685,64 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
     
     def run(self):
         self.root.mainloop()
+    
+    def check_for_updates(self):
+        """Zkontroluje verzi na GitHubu a stáhne aktualizaci pokud je dostupná"""
+        try:
+            # Stáhnutí verze z GitHubu
+            response = requests.get(GITHUB_RAW_URL + "version.txt", timeout=5)
+            if response.status_code == 200:
+                github_version = response.text.strip()
+                
+                if github_version != VERSION:
+                    # Novější verze dostupná
+                    result = messagebox.askyesno(
+                        "Nová verze dostupná",
+                        f"Aktuální verze: {VERSION}\nNová verze: {github_version}\n\nChceš stáhnout aktualizaci?"
+                    )
+                    
+                    if result:
+                        self.download_update()
+        except Exception as e:
+            print(f"Kontrola aktualizací selhala: {e}")
+    
+    def download_update(self):
+        """Stáhne nejnovější verzi z GitHubu"""
+        try:
+            files_to_update = [
+                "hp_monitor.py",
+                "requirements.txt",
+                "README.md",
+                "version.txt"
+            ]
+            
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            for filename in files_to_update:
+                url = GITHUB_RAW_URL + filename
+                response = requests.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    filepath = os.path.join(script_dir, filename)
+                    with open(filepath, 'wb') as f:
+                        f.write(response.content)
+            
+            messagebox.showinfo(
+                "Aktualizace hotova",
+                "Aplikace byla aktualizována. Restartuje se..."
+            )
+            
+            # Restart aplikace
+            python = sys.executable
+            if python.endswith('python.exe'):
+                python = python.replace('python.exe', 'pythonw.exe')
+            
+            script_path = os.path.abspath(__file__)
+            subprocess.Popen([python, script_path])
+            sys.exit(0)
+            
+        except Exception as e:
+            messagebox.showerror("Chyba", f"Aktualizace selhala: {e}")
 
 if __name__ == "__main__":
     app = HPMonitorOverlay()
