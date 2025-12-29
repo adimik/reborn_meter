@@ -689,6 +689,19 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
     def check_for_updates(self):
         """Zkontroluje verzi na GitHubu a stáhne aktualizaci pokud je dostupná"""
         try:
+            # Kontrola zda není aplikace zrušena
+            try:
+                deprecated_response = requests.get(GITHUB_RAW_URL + "deprecated.txt", timeout=5)
+                if deprecated_response.status_code == 200:
+                    message = deprecated_response.text.strip()
+                    messagebox.showerror(
+                        "Aplikace ukončena",
+                        message if message else "Tato aplikace byla vývojářem ukončena a nelze ji nadále používat."
+                    )
+                    sys.exit(0)
+            except:
+                pass  # deprecated.txt neexistuje, pokračuj normálně
+            
             # Stáhnutí verze z GitHubu
             response = requests.get(GITHUB_RAW_URL + "version.txt", timeout=5)
             if response.status_code == 200:
