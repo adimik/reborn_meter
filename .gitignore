@@ -6,6 +6,11 @@ __pycache__/
 venv/
 env/
 
+# PyInstaller build výstupy
+dist/
+build/
+*.spec
+
 # Config s citlivými daty
 config.json
 

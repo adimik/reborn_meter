@@ -13,7 +13,7 @@ import sys
 import subprocess
 import ctypes
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 UPDATE_URL = "https://api.github.com/repos/adimik/reborn_meter/releases/latest"
 DEPRECATED_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/main/deprecated.txt"
 
@@ -121,6 +121,54 @@ class HPMonitorOverlay:
         style = style | WS_EX_NOACTIVATE
         ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
     
+    def is_game_focused(self):
+        """Zkontroluje jestli je hra na popředí (aktivní okno)"""
+        try:
+            # Získat aktivní okno
+            foreground_hwnd = ctypes.windll.user32.GetForegroundWindow()
+            
+            # Získat název okna
+            length = ctypes.windll.user32.GetWindowTextLengthW(foreground_hwnd)
+            buff = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(foreground_hwnd, buff, length + 1)
+            window_title = buff.value.lower()
+            
+            # Kontrola jestli je to overlay (náš program) - pokud ano, považuj to za OK
+            if 'system monitor' in window_title or 'hp monitor' in window_title:
+                return True
+            
+            # PRIORITNÍ: Přesné jméno hry
+            if 'lineage' in window_title:
+                return True
+            
+            # Seznam běžných herních klíčových slov v názvech oken
+            # Pokud není overlay, zkontroluj jestli obsahuje herní klíčová slova
+            game_keywords = ['game', 'hra', 'metin', 'wow', 'league', 'dota', 
+                           'steam', 'epic', 'unity', 'unreal', 'directx', 'dx11', 'dx12',
+                           'fullscreen', 'opengl', 'vulkan']
+            
+            # Pokud je prázdný název nebo známý ne-herní program, vrať False
+            non_game = ['explorer', 'chrome', 'firefox', 'edge', 'discord', 
+                       'spotify', 'notepad', 'code', 'visual studio', 'file explorer',
+                       'dokumenty', 'documents', 'this pc', 'tento počítač']
+            
+            for ng in non_game:
+                if ng in window_title:
+                    return False
+            
+            # Pokud obsahuje herní klíčové slovo, považuj za hru
+            for keyword in game_keywords:
+                if keyword in window_title:
+                    return True
+            
+            # Pokud má okno název, pravděpodobně to je hra (fallback)
+            # Prázdný název = desktop
+            return len(window_title) > 0
+            
+        except Exception as e:
+            print(f"Chyba detekce okna: {e}")
+            return True  # Při chybě raději pokračuj v monitoringu
+    
     def setup_ui(self):
         self.root.configure(bg='#0a0a0a')
         self.root.geometry("400x550")
@@ -141,7 +189,12 @@ class HPMonitorOverlay:
         close_btn = tk.Label(self.title_bar, text="✕", bg='#252525', fg='#ffffff', 
                             font=('Segoe UI', 12), cursor='hand2', padx=15)
         close_btn.pack(side=tk.RIGHT)
-        close_btn.bind("<Button-1>", lambda e: self.root.quit())
+        
+        def close_click(e):
+            self.root.quit()
+            return "break"
+        
+        close_btn.bind("<Button-1>", close_click)
         close_btn.bind("<Enter>", lambda e: close_btn.config(bg='#ff4444'))
         close_btn.bind("<Leave>", lambda e: close_btn.config(bg='#252525'))
         
@@ -149,7 +202,12 @@ class HPMonitorOverlay:
         self.expand_btn = tk.Label(self.title_bar, text="▼", bg='#252525', fg='#888888', 
                                    font=('Segoe UI', 10), cursor='hand2', padx=15)
         self.expand_btn.pack(side=tk.RIGHT)
-        self.expand_btn.bind("<Button-1>", lambda e: self.toggle_expanded_mode())
+        
+        def expand_click(e):
+            self.toggle_expanded_mode()
+            return "break"
+        
+        self.expand_btn.bind("<Button-1>", expand_click)
         self.expand_btn.bind("<Enter>", lambda e: self.expand_btn.config(bg='#3e3e42'))
         self.expand_btn.bind("<Leave>", lambda e: self.expand_btn.config(bg='#252525'))
         
@@ -157,7 +215,12 @@ class HPMonitorOverlay:
         min_btn = tk.Label(self.title_bar, text="◀", bg='#252525', fg='#ffffff', 
                           font=('Segoe UI', 10), cursor='hand2', padx=15)
         min_btn.pack(side=tk.RIGHT)
-        min_btn.bind("<Button-1>", lambda e: self.toggle_compact_mode())
+        
+        def min_click(e):
+            self.toggle_compact_mode()
+            return "break"
+        
+        min_btn.bind("<Button-1>", min_click)
         min_btn.bind("<Enter>", lambda e: min_btn.config(bg='#3e3e42'))
         min_btn.bind("<Leave>", lambda e: min_btn.config(bg='#252525'))
         
@@ -174,7 +237,19 @@ class HPMonitorOverlay:
         webhook_label = tk.Label(self.full_frame, text="Discord Webhook", 
                                 bg='#1a1a1a', fg='#888888', 
                                 font=('Segoe UI', 9))
-        webhook_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0,5))
+        webhook_label.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0,5))
+        
+        # Webhook help button vedle labelu
+        webhook_help_btn = tk.Label(self.full_frame, text="❓", bg='#2d2d30', fg='#888888',
+                                    font=('Segoe UI', 10), cursor='hand2', width=3, takefocus=0)
+        webhook_help_btn.grid(row=0, column=2, sticky=tk.E, pady=(0,5))
+        
+        def webhook_help_click(e):
+            self.show_webhook_help(webhook_help_btn)
+            return "break"
+        
+        webhook_help_btn.bind("<Button-1>", webhook_help_click)
+        webhook_help_btn.bind("<Enter>", lambda e: webhook_help_btn.config(bg='#3e3e42'))
         
         self.webhook_entry = tk.Entry(self.full_frame, bg='#1e1e1e', fg='#888888', 
                                        font=('Segoe UI', 9), relief=tk.FLAT, 
@@ -189,7 +264,12 @@ class HPMonitorOverlay:
         webhook_paste_btn = tk.Label(self.full_frame, text="📋", bg='#2d2d30', fg='#888888',
                                      font=('Segoe UI', 10), cursor='hand2', width=3)
         webhook_paste_btn.grid(row=1, column=2, sticky=tk.E, pady=(0,10))
-        webhook_paste_btn.bind("<Button-1>", lambda e: self.paste_to_entry(self.webhook_entry))
+        
+        def webhook_paste_click(e):
+            self.paste_to_entry(self.webhook_entry)
+            return "break"
+        
+        webhook_paste_btn.bind("<Button-1>", webhook_paste_click)
         webhook_paste_btn.bind("<Enter>", lambda e: webhook_paste_btn.config(bg='#3e3e42'))
         webhook_paste_btn.bind("<Leave>", lambda e: webhook_paste_btn.config(bg='#2d2d30'))
         
@@ -198,13 +278,17 @@ class HPMonitorOverlay:
                                 font=('Segoe UI', 9))
         user_id_label.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(0,5))
         
-        # Tlačítko nápovědy
-        help_btn = tk.Label(self.full_frame, text="❓", bg='#2d2d30', fg='#888888',
-                           font=('Segoe UI', 10), cursor='hand2', width=3)
-        help_btn.grid(row=2, column=2, sticky=tk.E, pady=(0,5))
-        help_btn.bind("<Button-1>", lambda e: self.show_user_id_help())
-        help_btn.bind("<Enter>", lambda e: help_btn.config(bg='#3e3e42'))
-        help_btn.bind("<Leave>", lambda e: help_btn.config(bg='#2d2d30'))
+        # User ID help button
+        user_id_help_btn = tk.Label(self.full_frame, text="❓", bg='#2d2d30', fg='#888888',
+                                    font=('Segoe UI', 10), cursor='hand2', width=3, takefocus=0)
+        user_id_help_btn.grid(row=2, column=2, sticky=tk.E, pady=(0,5))
+        
+        def user_id_help_click(e):
+            self.show_user_id_help(user_id_help_btn)
+            return "break"
+        
+        user_id_help_btn.bind("<Button-1>", user_id_help_click)
+        user_id_help_btn.bind("<Enter>", lambda e: user_id_help_btn.config(bg='#3e3e42'))
         
         self.user_id_entry = tk.Entry(self.full_frame, bg='#1e1e1e', fg='#888888', 
                                        font=('Segoe UI', 9), relief=tk.FLAT, 
@@ -219,27 +303,56 @@ class HPMonitorOverlay:
         user_id_paste_btn = tk.Label(self.full_frame, text="📋", bg='#2d2d30', fg='#888888',
                                      font=('Segoe UI', 10), cursor='hand2', width=3)
         user_id_paste_btn.grid(row=3, column=2, sticky=tk.E, pady=(0,15))
-        user_id_paste_btn.bind("<Button-1>", lambda e: self.paste_to_entry(self.user_id_entry))
+        
+        def user_id_paste_click(e):
+            self.paste_to_entry(self.user_id_entry)
+            return "break"
+        
+        user_id_paste_btn.bind("<Button-1>", user_id_paste_click)
         user_id_paste_btn.bind("<Enter>", lambda e: user_id_paste_btn.config(bg='#3e3e42'))
         user_id_paste_btn.bind("<Leave>", lambda e: user_id_paste_btn.config(bg='#2d2d30'))
         
-        buttons = [
-            ("📍 Vybrat Oblast", self.start_area_selection, '#2d2d30', 0),
-            ("▶️ Spustit", self.toggle_monitoring, '#007acc', 1),
-            ("💾 Uložit", self.save_config, '#2d2d30', 2)
-        ]
+        # Vybrat Oblast button
+        select_btn = tk.Label(self.full_frame, text="📍 Vybrat Oblast", bg='#2d2d30', fg='#ffffff',
+                             font=('Segoe UI', 9, 'bold'), cursor='hand2', 
+                             relief=tk.FLAT, padx=10, pady=10)
+        select_btn.grid(row=4, column=0, sticky='ew', padx=5)
         
-        for text, command, color, col in buttons:
-            btn = tk.Label(self.full_frame, text=text, bg=color, fg='#ffffff',
-                          font=('Segoe UI', 9, 'bold'), cursor='hand2', 
-                          relief=tk.FLAT, padx=10, pady=10)
-            btn.grid(row=4, column=col, sticky='ew', padx=5)
-            btn.bind("<Button-1>", lambda e, cmd=command: cmd())
-            btn.bind("<Enter>", lambda e, b=btn: b.config(bg='#3e3e42'))
-            btn.bind("<Leave>", lambda e, b=btn, c=color: b.config(bg=c))
-            
-            if col == 1:
-                self.monitor_btn = btn
+        def select_area_click(e):
+            self.start_area_selection()
+            return "break"
+        
+        select_btn.bind("<Button-1>", select_area_click)
+        select_btn.bind("<Enter>", lambda e: select_btn.config(bg='#3e3e42'))
+        select_btn.bind("<Leave>", lambda e: select_btn.config(bg='#2d2d30'))
+        
+        # Spustit button
+        self.monitor_btn = tk.Label(self.full_frame, text="▶️ Spustit", bg='#007acc', fg='#ffffff',
+                                    font=('Segoe UI', 9, 'bold'), cursor='hand2', 
+                                    relief=tk.FLAT, padx=10, pady=10)
+        self.monitor_btn.grid(row=4, column=1, sticky='ew', padx=5)
+        
+        def monitor_click(e):
+            self.toggle_monitoring()
+            return "break"
+        
+        self.monitor_btn.bind("<Button-1>", monitor_click)
+        self.monitor_btn.bind("<Enter>", lambda e: self.monitor_btn.config(bg='#3e3e42'))
+        self.monitor_btn.bind("<Leave>", lambda e: self.monitor_btn.config(bg='#007acc'))
+        
+        # Uložit button
+        save_btn = tk.Label(self.full_frame, text="💾 Uložit", bg='#2d2d30', fg='#ffffff',
+                           font=('Segoe UI', 9, 'bold'), cursor='hand2', 
+                           relief=tk.FLAT, padx=10, pady=10)
+        save_btn.grid(row=4, column=2, sticky='ew', padx=5)
+        
+        def save_click(e):
+            self.save_config()
+            return "break"
+        
+        save_btn.bind("<Button-1>", save_click)
+        save_btn.bind("<Enter>", lambda e: save_btn.config(bg='#3e3e42'))
+        save_btn.bind("<Leave>", lambda e: save_btn.config(bg='#2d2d30'))
         
         self.full_frame.columnconfigure(0, weight=1)
         self.full_frame.columnconfigure(1, weight=1)
@@ -253,15 +366,21 @@ class HPMonitorOverlay:
         test_label.pack(side=tk.LEFT)
         
         test_buttons = [
-            ("🔔 Webhook", self.test_webhook),
-            ("⚠️ HP=0", self.test_hp_zero_alert)
+            ("🧪 Test", self.test_webhook)
         ]
         
         for text, command in test_buttons:
             btn = tk.Label(test_frame, text=text, bg='#2d2d30', fg='#888888',
                           font=('Segoe UI', 8), cursor='hand2', padx=8, pady=4)
             btn.pack(side=tk.LEFT, padx=5)
-            btn.bind("<Button-1>", lambda e, cmd=command: cmd())
+            
+            def make_test_handler(cmd):
+                def handler(e):
+                    cmd()
+                    return "break"
+                return handler
+            
+            btn.bind("<Button-1>", make_test_handler(command))
             btn.bind("<Enter>", lambda e, b=btn: b.config(bg='#3e3e42'))
             btn.bind("<Leave>", lambda e, b=btn: b.config(bg='#2d2d30'))
         
@@ -330,7 +449,7 @@ class HPMonitorOverlay:
             entry_widget.config(state='readonly')
             pass
     
-    def show_user_id_help(self):
+    def show_user_id_help(self, button):
         """Zobrazí návod jak získat User ID"""
         help_text = """Jak získat své Discord User ID:
 
@@ -346,7 +465,107 @@ Příklad: 123456789012345678
 
 Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
         
-        messagebox.showinfo("Jak získat User ID", help_text)
+        self.show_tooltip_popup(help_text, "Jak získat User ID", button)
+    
+    def show_webhook_help(self, button):
+        """Zobrazí návod jak vytvořit Discord webhook"""
+        help_text = """Jak vytvořit Discord webhook:
+
+1. Otevři Discord server (musíš mít oprávnění)
+2. Klikni pravým na kanál kam chceš notifikace
+3. Upravit kanál → Integrace
+4. Vytvořit webhook (Create Webhook)
+5. Pojmenuj si ho (např. "HP Monitor")
+6. Zkopíruj Webhook URL
+7. Vlož sem
+
+URL vypadá takto:
+https://discord.com/api/webhooks/123.../abc...
+
+Webhook posílá zprávy do zvoleného kanálu!"""
+        
+        self.show_tooltip_popup(help_text, "Jak vytvořit Webhook", button)
+    
+    def show_tooltip_popup(self, text, title, button):
+        """Vytvoří vlastní popup tooltip bez zvuku"""
+        # Pokud už existuje popup pro toto tlačítko, zavři ho
+        if hasattr(button, '_active_popup') and button._active_popup:
+            try:
+                button._active_popup.destroy()
+            except:
+                pass
+            button._active_popup = None
+            # Obnovit původní Leave binding
+            button.bind("<Leave>", lambda e: button.config(bg='#2d2d30'))
+            return
+        
+        popup = tk.Toplevel(self.root)
+        popup.title(title)
+        popup.configure(bg='#2d2d30')
+        popup.overrideredirect(True)
+        
+        # Vždy navrchu jako overlay
+        popup.attributes('-topmost', True)
+        popup.attributes('-alpha', 0.98)
+        
+        # Pozice vedle myši
+        x = self.root.winfo_pointerx() + 10
+        y = self.root.winfo_pointery() + 10
+        popup.geometry(f"+{x}+{y}")
+        
+        # Frame s borderem (vytvoř UI před aplikací WS_EX_NOACTIVATE)
+        border_frame = tk.Frame(popup, bg='#888888', padx=2, pady=2)
+        border_frame.pack(fill=tk.BOTH, expand=True)
+        
+        content_frame = tk.Frame(border_frame, bg='#2d2d30', padx=15, pady=10)
+        content_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Titulek
+        title_label = tk.Label(content_frame, text=title, 
+                              bg='#2d2d30', fg='#ffffff',
+                              font=('Segoe UI', 11, 'bold'))
+        title_label.pack(anchor='w', pady=(0,8))
+        
+        # Text
+        text_label = tk.Label(content_frame, text=text, 
+                            bg='#2d2d30', fg='#cccccc',
+                            font=('Segoe UI', 9), justify=tk.LEFT)
+        text_label.pack(anchor='w')
+        
+        # Zajistit aby popup nebral focus (po vytvoření UI)
+        popup.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(popup.winfo_id())
+        if not hwnd:
+            hwnd = popup.winfo_id()
+        
+        GWL_EXSTYLE = -20
+        WS_EX_NOACTIVATE = 0x08000000
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        style = style | WS_EX_NOACTIVATE
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+        
+        # Uložit referenci na popup k tlačítku
+        button._active_popup = popup
+        
+        # Zavřít popup při opuštění tlačítka
+        def close_on_leave(event=None):
+            try:
+                popup.destroy()
+            except:
+                pass
+            button._active_popup = None
+            # Obnovit původní Leave binding (reset barvy)
+            button.bind("<Leave>", lambda e: button.config(bg='#2d2d30'))
+            button.config(bg='#2d2d30')
+        
+        # Přebindovat Leave na tlačítku
+        button.bind("<Leave>", close_on_leave)
+        
+        # Zavřít i při kliku na popup
+        popup.bind('<Button-1>', lambda e: close_on_leave())
+        
+        # Zobrazit popup bez brání focusu
+        popup.lift()
     
     def toggle_expanded_mode(self):
         """Přepne mezi normálním a expandovaným módem"""
@@ -499,27 +718,58 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
     def monitor_hp(self):
         while self.monitoring:
             try:
+                # PRVNÍ KONTROLA - před čekáním
+                if not self.is_game_focused():
+                    self.root.after(0, lambda: self.update_hp_display("⏸"))
+                    self.root.after(0, lambda: self.set_hp_color("#ffa500"))
+                    self.root.after(0, lambda: self.status_label.config(
+                        text="⏸️ Hra není aktivní (pauza)", fg="#ffa500"))
+                    time.sleep(2)  # Kratší čekání při pauze
+                    continue
+                
+                # Čekat 5 sekund (ale během toho může uživatel přepnout okno!)
+                time.sleep(5)
+                
+                # DRUHÁ KONTROLA - těsně před scanem (po 5 sekundách může být jiné okno!)
+                if not self.is_game_focused():
+                    print("⏸ Okno se změnilo během čekání - přeskakuji scan")
+                    self.root.after(0, lambda: self.update_hp_display("⏸"))
+                    self.root.after(0, lambda: self.set_hp_color("#ffa500"))
+                    self.root.after(0, lambda: self.status_label.config(
+                        text="⏸️ Hra není aktivní (pauza)", fg="#ffa500"))
+                    continue
+                
                 hp_value = self.read_hp_value()
                 
                 if hp_value is None:
+                    # OCR nenalezlo žádné číslo - NEPŘIDEJŽ last_valid_hp!
                     self.root.after(0, lambda: self.update_hp_display("---"))
                     self.root.after(0, lambda: self.set_hp_color("#808080"))
                     self.root.after(0, lambda: self.status_label.config(
                         text="⏸️ Čekám na herní okno...", fg="#ffa500"))
                 else:
+                    # OCR našlo platné HP
                     self.root.after(0, lambda v=hp_value: self.update_hp_display(v))
                     
+                    # Poslat notifikaci JEN když OCR ÚspĚšNĚ našlo 0 A hra je stále aktivní
                     if hp_value == 0 and self.last_valid_hp and self.last_valid_hp > 0:
-                        self.send_discord_notification(hp_value)
-                        self.root.after(0, lambda: self.set_hp_color("#ff4444"))
-                        self.root.after(0, lambda: self.status_label.config(
-                            text="⚠️ HP = 0! Alert odeslán!", fg="#ff4444"))
+                        # TŘETÍ KONTROLA - zkontrolovat že hra je stále na popředí před odesláním
+                        if self.is_game_focused():
+                            self.send_discord_notification(hp_value)
+                            self.root.after(0, lambda: self.set_hp_color("#ff4444"))
+                            self.root.after(0, lambda: self.status_label.config(
+                                text="⚠️ HP = 0! Alert odeslán!", fg="#ff4444"))
+                        else:
+                            print("HP=0 detekováno, ale hra není aktivní - notifikace NEBYLA odeslána")
+                            self.root.after(0, lambda: self.status_label.config(
+                                text="⏸️ Hra není aktivní (pauza)", fg="#ffa500"))
                     elif hp_value > 0:
                         self.root.after(0, lambda: self.set_hp_color("#00ff88"))
                         if self.status_label.cget("text") != "✓ Monitorování aktivní":
                             self.root.after(0, lambda: self.status_label.config(
                                 text="✓ Monitorování aktivní", fg="#00ff88"))
                     
+                    # Aktualizovat last_valid_hp JEN když OCR našlo platné HP
                     self.last_valid_hp = hp_value
                 
                 self.last_hp = hp_value
@@ -528,8 +778,6 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
                 print(f"Chyba: {e}")
                 self.root.after(0, lambda e=e: self.status_label.config(
                     text=f"❌ Chyba: {str(e)[:30]}", fg="#ff4444"))
-            
-            time.sleep(5)
     
     def read_hp_value(self):
         if not self.hp_position:
@@ -540,46 +788,103 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
         img_np = np.array(screenshot)
         img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
         
+        # Validace že screenshot vypadá jako herní UI
         if not self.is_valid_screenshot(img_cv):
+            return None
+        
+        # Extra validace - zkontrolovat že to nevypadá jako File Manager
+        if self.looks_like_file_manager(img_cv):
+            print("⚠ Screenshot vypadá jako File Manager - přeskakuji")
             return None
         
         if TESSERACT_AVAILABLE:
             try:
-                # Zvětšení obrázku 3x pro lepší OCR
-                img_large = cv2.resize(img_cv, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+                # Zvětšení obrázku 6x pro maximální OCR přesnost
+                img_large = cv2.resize(img_cv, None, fx=6, fy=6, interpolation=cv2.INTER_CUBIC)
                 
                 gray = cv2.cvtColor(img_large, cv2.COLOR_BGR2GRAY)
                 
-                # Zvýšení kontrastu
-                gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
+                # Velmi silný kontrast pro ostré číslice
+                gray = cv2.convertScaleAbs(gray, alpha=2.5, beta=15)
+                
+                # Bilateral filter pro odstranění šumu
+                gray = cv2.bilateralFilter(gray, 11, 90, 90)
+                
+                # Morphological opening pro odstranění malých artefaktů
+                kernel = np.ones((2,2), np.uint8)
+                gray = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel)
                 
                 # Threshold pro čistší text
                 _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
                 
-                # OCR s konfigurací pro čísla a lomítko (formát: 8615/8615)
-                text = pytesseract.image_to_string(thresh, config='--psm 7 -c tessedit_char_whitelist=0123456789/')
-                text = text.strip()
+                # Uložit debug screenshot do aktuální složky (kde je EXE)
+                if getattr(sys, 'frozen', False):
+                    # Pokud je to EXE, ulož vedle EXE
+                    debug_path = os.path.join(os.path.dirname(sys.executable), "debug_ocr.png")
+                else:
+                    # Pokud je to Python skript, ulož vedle skriptu
+                    debug_path = os.path.join(os.path.dirname(__file__), "debug_ocr.png")
+                cv2.imwrite(debug_path, thresh)
+                print(f"Debug screenshot uložen: {debug_path}")
                 
-                print(f"OCR text: '{text}'")  # Debug
+                # OCR s lepší konfigurací pro dlouhá čísla
+                # psm 6 = uniform block of text, psm 7 = single line
+                text = pytesseract.image_to_string(thresh, config='--psm 6 -c tessedit_char_whitelist=0123456789/')
+                text = text.strip().replace(' ', '').replace('\n', '')  # Odstranit mezery a nové řádky
                 
-                # Parse formátu "aktuální/maximum"
+                print(f"OCR raw: '{text}'")  # Debug
+                
+                # Parse formátu "aktuální/maximum" - VYŽADOVAT lomítko!
                 import re
                 match = re.search(r'(\d+)/(\d+)', text)
                 if match:
                     current_hp = int(match.group(1))
                     max_hp = int(match.group(2))
-                    print(f"HP parsed: {current_hp}/{max_hp}")
+                    
+                    # Validace: current HP nemůže být větší než max HP
+                    if current_hp > max_hp:
+                        print(f"⚠ Neplatné HP: {current_hp}/{max_hp} (current > max)")
+                        return None
+                    
+                    # Validace: HP musí být rozumné číslo (ne 0/0)
+                    if max_hp == 0:
+                        print(f"⚠ Neplatné HP: {current_hp}/{max_hp} (max=0)")
+                        return None
+                    
+                    print(f"✓ HP parsed: {current_hp}/{max_hp}")
                     return current_hp
                 
-                # Fallback - pokud není lomítko, zkus jen číslice
-                numbers = ''.join(filter(str.isdigit, text))
-                if numbers:
-                    return int(numbers)
+                # BEZ fallbacku - pokud není správný formát, vrať None
+                print(f"⚠ OCR nenašlo správný formát HP (číslo/číslo): '{text}'")
+                return None
                     
             except Exception as e:
                 print(f"OCR chyba: {e}")
         
         return self.detect_hp_by_color(img_cv)
+    
+    def looks_like_file_manager(self, img):
+        """Detekuje jestli screenshot vypadá jako File Manager (bílé pozadí, málo barev)"""
+        try:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            mean_brightness = np.mean(gray)
+            
+            # File Manager má obvykle světlé pozadí (>200), hra má tmavé (<100)
+            if mean_brightness > 180:
+                return True
+            
+            # Zkontrolovat pestrost barev - File Manager má méně barev než hra
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            saturation = hsv[:,:,1]
+            mean_saturation = np.mean(saturation)
+            
+            # Nízká saturace = šedivé/bílé = pravděpodobně File Manager
+            if mean_saturation < 30:
+                return True
+            
+            return False
+        except:
+            return False
     
     def is_valid_screenshot(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -688,26 +993,6 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
         
         threading.Thread(target=test_thread, daemon=True).start()
     
-    def test_hp_zero_alert(self):
-        if not self.webhook_entry.get():
-            messagebox.showerror("Chyba", "Nejprve zadej Discord webhook URL!")
-            return
-        
-        self.discord_webhook = self.webhook_entry.get()
-        self.discord_user_id = self.user_id_entry.get()
-        self.status_label.config(text="Odesílám HP=0 alert...", fg="#ffa500")
-        
-        def alert_thread():
-            success = self.send_discord_notification(0, is_test=False)
-            if success:
-                self.root.after(0, lambda: self.status_label.config(text="✓ HP=0 alert odeslán!", fg="#00ff88"))
-                self.root.after(0, lambda: messagebox.showinfo("Úspěch", "HP=0 alert odeslán!"))
-            else:
-                self.root.after(0, lambda: self.status_label.config(text="✗ Alert selhal!", fg="#ff4444"))
-                self.root.after(0, lambda: messagebox.showerror("Chyba", "Alert se nepodařilo odeslat!"))
-        
-        threading.Thread(target=alert_thread, daemon=True).start()
-    
     def toggle_compact_mode(self):
         self.compact_mode = not self.compact_mode
         
@@ -797,7 +1082,14 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
                 release_data = response.json()
                 latest_version = release_data.get('tag_name', '').replace('v', '')
                 
-                if latest_version and latest_version != VERSION:
+                # Porovnání verzí (semantic versioning)
+                def parse_version(v):
+                    try:
+                        return tuple(map(int, v.split('.')))
+                    except:
+                        return (0, 0, 0)
+                
+                if latest_version and parse_version(latest_version) > parse_version(VERSION):
                     # Najít HPMonitor.exe asset
                     download_url = None
                     for asset in release_data.get('assets', []):
@@ -829,8 +1121,11 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
                     messagebox.showerror("Chyba", "Updater nebyl nalezen!")
                     return
                 
-                # Spustit updater a zavřít aplikaci
-                subprocess.Popen([updater_path, download_url, exe_path])
+                # Spustit updater v novém terminálu
+                import subprocess
+                CREATE_NEW_CONSOLE = 0x00000010
+                subprocess.Popen([updater_path, download_url, exe_path], 
+                               creationflags=CREATE_NEW_CONSOLE)
                 self.root.destroy()
                 sys.exit(0)
             else:
