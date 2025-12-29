@@ -1,0 +1,5 @@
+⚠️ Tato aplikace byla ukončena vývojářem.
+
+Děkujeme za používání HP Monitor.
+
+Pro více informací navštiv: https://github.com/adimik/reborn_meter
