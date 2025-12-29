@@ -13,7 +13,7 @@ import sys
 import subprocess
 
 VERSION = "1.0.0"
-UPDATE_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/master/"
+UPDATE_URL = "https://raw.githubusercontent.com/adimik/reborn_meter/main/"
 
 try:
     import pytesseract
@@ -486,13 +486,37 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
         
         if TESSERACT_AVAILABLE:
             try:
-                gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                text = pytesseract.image_to_string(thresh, config='--psm 7 digits')
-                numbers = ''.join(filter(str.isdigit, text))
+                # Zvětšení obrázku 3x pro lepší OCR
+                img_large = cv2.resize(img_cv, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
                 
+                gray = cv2.cvtColor(img_large, cv2.COLOR_BGR2GRAY)
+                
+                # Zvýšení kontrastu
+                gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=0)
+                
+                # Threshold pro čistší text
+                _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                
+                # OCR s konfigurací pro čísla a lomítko (formát: 8615/8615)
+                text = pytesseract.image_to_string(thresh, config='--psm 7 -c tessedit_char_whitelist=0123456789/')
+                text = text.strip()
+                
+                print(f"OCR text: '{text}'")  # Debug
+                
+                # Parse formátu "aktuální/maximum"
+                import re
+                match = re.search(r'(\d+)/(\d+)', text)
+                if match:
+                    current_hp = int(match.group(1))
+                    max_hp = int(match.group(2))
+                    print(f"HP parsed: {current_hp}/{max_hp}")
+                    return current_hp
+                
+                # Fallback - pokud není lomítko, zkus jen číslice
+                numbers = ''.join(filter(str.isdigit, text))
                 if numbers:
                     return int(numbers)
+                    
             except Exception as e:
                 print(f"OCR chyba: {e}")
         
