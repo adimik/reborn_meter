@@ -36,10 +36,15 @@ except Exception as e:
 
 class HPMonitorOverlay:
     def __init__(self):
+        # Vytvořit root window nejdřív (potřebné pro messagebox)
+        self.root = tk.Tk()
+        self.root.withdraw()  # Skrýt dokud není zkontrolovaná verze
+        
         # Kontrola aktualizací při startu
         self.check_for_updates()
         
-        self.root = tk.Tk()
+        # Zobrazit okno
+        self.root.deiconify()
         self.root.title("System Monitor")
         
         self.root.overrideredirect(True)
@@ -694,12 +699,14 @@ Toto NENÍ nick (např. "JohnDoe"), ale číselné ID!"""
                 deprecated_response = requests.get(GITHUB_RAW_URL + "deprecated.txt", timeout=5)
                 if deprecated_response.status_code == 200:
                     message = deprecated_response.text.strip()
+                    self.root.withdraw()
                     messagebox.showerror(
                         "Aplikace ukončena",
                         message if message else "Tato aplikace byla vývojářem ukončena a nelze ji nadále používat."
                     )
+                    self.root.destroy()
                     sys.exit(0)
-            except:
+            except requests.exceptions.RequestException:
                 pass  # deprecated.txt neexistuje, pokračuj normálně
             
             # Stáhnutí verze z GitHubu
